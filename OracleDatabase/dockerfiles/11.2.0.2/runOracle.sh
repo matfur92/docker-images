@@ -2,6 +2,7 @@
 
 ########### Move DB files ############
 function moveFiles {
+   echo "--moveFiles--START--"
    if [ ! -d $ORACLE_BASE/oradata/dbconfig/$ORACLE_SID ]; then
       su -p oracle -c "mkdir -p $ORACLE_BASE/oradata/dbconfig/$ORACLE_SID/"
    fi;
@@ -13,11 +14,12 @@ function moveFiles {
    mv /etc/sysconfig/oracle-xe $ORACLE_BASE/oradata/dbconfig/$ORACLE_SID/
       
    symLinkFiles;
+   echo "--moveFiles--END--"
 }
 
 ########### Symbolic link DB files ############
 function symLinkFiles {
-
+   echo "--symLinkFiles--START--"
    if [ ! -L $ORACLE_HOME/dbs/spfile$ORACLE_SID.ora ]; then
       ln -s $ORACLE_BASE/oradata/dbconfig/$ORACLE_SID/spfile$ORACLE_SID.ora $ORACLE_HOME/dbs/spfile$ORACLE_SID.ora
    fi;
@@ -37,25 +39,32 @@ function symLinkFiles {
    if [ ! -L /etc/sysconfig/oracle-xe ]; then
       ln -s $ORACLE_BASE/oradata/dbconfig/$ORACLE_SID/oracle-xe /etc/sysconfig/oracle-xe
    fi;
+   echo "--symLinkFiles--END--"
 }
 
 ########### SIGTERM handler ############
 function _term() {
+   echo "--_term--START--"
    echo "Stopping container."
    echo "SIGTERM received, shutting down database!"
   /etc/init.d/oracle-xe stop
+  echo "--_term--START--"
 }
 
 ########### SIGKILL handler ############
 function _kill() {
+   echo "--_kill--START--"
    echo "SIGKILL received, shutting down database!"
    /etc/init.d/oracle-xe stop
+   echo "--_kill--END--"
 }
 
 ############# Create DB ################
 function createDB {
+   echo "--createDB--START--"
    # Auto generate ORACLE PWD
-   ORACLE_PWD=`openssl rand -hex 8`
+   #ORACLE_PWD=`openssl rand -hex 8`
+   ORACLE_PWD="sysadminpwd"
    echo "ORACLE AUTO GENERATED PASSWORD FOR SYS AND SYSTEM: $ORACLE_PWD";
 
    sed -i -e "s|###ORACLE_PWD###|$ORACLE_PWD|g" $ORACLE_BASE/$CONFIG_RSP && \
@@ -90,12 +99,21 @@ function createDB {
       ALTER SYSTEM SET db_recovery_file_dest='';
       exit;
 EOF"
-
+  
+  # Check whether database already exists
+  if [ -d /init_db_script ]; then
+      echo "Start running /init_db_script/initdb.sh to init oracle database"  
+      /init_db_script/initdb.sh
+  fi;
+  
   # Move database operational files to oradata
   moveFiles;
+  echo "--createDB--END--"
 }
 
 ############# MAIN ################
+
+echo "--MAIN--START--"
 
 # Check whether container has enough memory
 if [ `df -k /dev/shm | tail -n 1 | awk '{print $2}'` -lt 1048576 ]; then
@@ -129,6 +147,10 @@ echo "#########################"
 echo "DATABASE IS READY TO USE!"
 echo "#########################"
 
+echo "$ORACLE_BASE/diag/rdbms/*/*/trace/alert*.log"
+
+echo "--TAIL--"
 tail -f $ORACLE_BASE/diag/rdbms/*/*/trace/alert*.log &
 childPID=$!
 wait $childPID
+echo "--MAIN--END--"
